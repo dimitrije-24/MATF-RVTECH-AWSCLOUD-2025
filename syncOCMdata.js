@@ -4,10 +4,8 @@ const { DynamoDBDocumentClient, BatchWriteCommand, ScanCommand } = require('@aws
 const OCM_API_KEY = process.env.OCM_API_KEY;
 const OCM_URL = process.env.OCM_URL;
 const TABLE_NAME = process.env.CHARGERS_TABLE;
-const BATCH_SIZE = 25;  // DynamoDB BatchWriteItem limit (maks 25 stavki po batch-u)
+const BATCH_SIZE = 25; 
 
-// Konfiguracija DynamoDB klijenta za LocalStack
-// LOCALSTACK_HOSTNAME se automatski postavlja kada Lambda radi unutar LocalStack kontejnera
 const DYNAMODB_ENDPOINT = process.env.LOCALSTACK_HOSTNAME
   ? `http://${process.env.LOCALSTACK_HOSTNAME}:4566`
   : 'http://localhost:4566';
@@ -19,16 +17,26 @@ const client = new DynamoDBClient({
   endpoint: DYNAMODB_ENDPOINT,
   region: 'us-east-1',
 });
-// DocumentClient automatski konvertuje JS objekte <-> DynamoDB format 
-// (nije potrebna { S: "value" } sintaksa)
+
 const docClient = DynamoDBDocumentClient.from(client);
 
-exports.handler = async () => {
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'GET,OPTIONS',
+};
+
+exports.handler = async (event) => {
+
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers: corsHeaders };
+  }
+
   console.log("Fetching OCM chargers...");
 
   try {
-    // Preuzmi podatke sa OCM API-ja
-    const MAX_RESULTS = 1000; // za Srbiju ima oko 110 punjača na OCM API-ju
+
+    const MAX_RESULTS = 1000;
     const params = new URLSearchParams({
       key: OCM_API_KEY,
       countrycode: 'RS',
@@ -45,24 +53,22 @@ exports.handler = async () => {
     console.log(fetchedAll ? 'All chargers fetched' : 'May have more chargers (hit maxresults limit)');
     console.log('Example charger:', JSON.stringify(chargers[0], null, 2));
 
-    // Sačuvaj samo odabrana polja
-    const ttl = Math.floor(Date.now() / 1000) + 2 * 24 * 60 * 60;  // TTL: 2 dana od sada (Unix timestamp u sekundama)
+    const ttl = Math.floor(Date.now() / 1000) + 2 * 24 * 60 * 60; 
     
-    // Normalizuj imena gradova (Beograd ima više verzija naziva u OCM podacima + provera poštanskog broja)
     const normalizeTown = (town, postcode) => {
       if (['Belgrad', 'Belgrade', 'Beograd'].includes(town)) return 'Belgrade';
-      if (postcode?.startsWith('11')) return 'Belgrade';  // Beogradski poštanski brojevi: 11000-11999
+      if (postcode?.startsWith('11')) return 'Belgrade'; 
       return town || 'Unknown';
     };
     
     const items = chargers.map(charger => ({
-      chargerId: String(charger.ID),                         // Primarni ključ
+      chargerId: String(charger.ID),                         
       uuid: charger.UUID,
-      town: normalizeTown(charger.AddressInfo?.Town, charger.AddressInfo?.Postcode),  // GSI ključ (normalizovan)
-      townRaw: charger.AddressInfo?.Town || 'Unknown',       // Originalno ime grada iz OCM-a
+      town: normalizeTown(charger.AddressInfo?.Town, charger.AddressInfo?.Postcode),  
+      townRaw: charger.AddressInfo?.Town || 'Unknown',    
       title: charger.AddressInfo?.Title,
-      addressLine1: charger.AddressInfo?.AddressLine1,      // Ulica
-      addressLine2: charger.AddressInfo?.AddressLine2,      // Opština/oblast
+      addressLine1: charger.AddressInfo?.AddressLine1,      
+      addressLine2: charger.AddressInfo?.AddressLine2,      
       postcode: charger.AddressInfo?.Postcode,
       latitude: charger.AddressInfo?.Latitude,
       longitude: charger.AddressInfo?.Longitude,
@@ -70,8 +76,8 @@ exports.handler = async () => {
       dateCreated: charger.DateCreated,
       dateLastVerified: charger.DateLastVerified,
       dateLastStatusUpdate: charger.DateLastStatusUpdate,
-      numberOfPoints: charger.NumberOfPoints,               // Broj priključaka za punjenje
-      ttl,                       // (opciono, ne koristimo) DynamoDB TTL - automatsko brisanje nakon 2 dana
+      numberOfPoints: charger.NumberOfPoints,               
+      ttl,                    
     }));
     
     const batches = [];
@@ -129,19 +135,18 @@ exports.handler = async () => {
 
     return {
       statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': 'http://punjaci-website.s3-website.localhost.localstack.cloud:4566' },
+      headers: corsHeaders,
       body: JSON.stringify({
-        message: "OCM data synced to DynamoDB",
+        message: "OCM data synced successfully",
         count: items.length,
-        deleted: deletedCount,  
-        fetchedAll: fetchedAll,
+        deleted: deletedCount
       }),
     };
   } catch (error) {
     console.error("Error syncing OCM data:", error);
     return {
       statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': 'http://punjaci-website.s3-website.localhost.localstack.cloud:4566' },
+      headers: corsHeaders,
       body: JSON.stringify({ error: error.message }),
     };
   }

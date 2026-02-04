@@ -49,10 +49,6 @@ resources:
                 KeyType: HASH       		
             Projection:             		
               ProjectionType: ALL   		
-        # Opcija: TTL umesto Scan za automatsko brisanje zastarelih zapisa
-        # TimeToLiveSpecification:
-        #   AttributeName: ttl      		# Atribut koji sadrži Unix timestamp isteka
-        #   Enabled: true           		# DynamoDB automatski briše istekle zapise
     WebsiteBucket:                  		
       Type: AWS::S3::Bucket         		
       Properties:
