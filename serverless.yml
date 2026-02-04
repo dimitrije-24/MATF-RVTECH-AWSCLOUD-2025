@@ -26,6 +26,17 @@ functions:
           path: sync                		
           method: get               		
           cors: true
+  getChargers:
+    handler: getChargers.handler
+    description: Get charger data based on selected town
+    role: GetChargersRole
+    events:
+      - schedule:
+          rate: rate(1 minute)
+      - http:
+          path: chargers/{town}
+          method: get
+          cors: true
 
 resources:                          		
   Resources:                        		
@@ -105,3 +116,37 @@ resources:
                     - logs:CreateLogStream
                     - logs:PutLogEvents
                   Resource: "*"
+    GetChargersRole:
+      Type: AWS::IAM::Role              
+      Properties:
+        RoleName: GetChargers-role-${sls:stage}     
+        AssumeRolePolicyDocument:      
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com  
+              Action: sts:AssumeRole
+        Policies:                     
+          - PolicyName: DynamoDBAccess   
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow         
+                  Action:
+                    - dynamodb:GetItem
+                    - dynamodb:Scan
+                    - dynamodb:Query
+                  Resource:
+                    - !GetAtt ChargersTable.Arn                              
+                    - !Join ['/', [!GetAtt ChargersTable.Arn, 'index/*']] 
+          - PolicyName: CloudWatchLogs   
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource: "*"    
