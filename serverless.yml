@@ -1,5 +1,6 @@
 service: punjaci
 frameworkVersion: "3"
+useDotenv: true
 
 plugins:
   - serverless-localstack
@@ -8,56 +9,103 @@ provider:
   name: aws
   runtime: nodejs18.x
   region: us-east-1
+  environment:                      		
+    OCM_API_KEY: ${env:OCM_API_KEY}  
+    OCM_URL: 'https://api.openchargemap.io/v3/poi'        
+    CHARGERS_TABLE: Chargers        		
 
-functions:
-  # Function to get all chargers from DynamoDB
-  getChargers:
-    handler: getChargers.getChargers
-    description: Get all chargers
-    events:
-      - http:
-          path: chargers
-          method: get
-  # Function to sync data from Open Charge Map every minute
-  syncOCMdata:
-    handler: syncOCMdata.syncOCM
+functions:                          		
+  syncOCMdata:                      		
+    handler: syncOCMdata.handler          		
     description: Sync data from Open Charge Map
-    events:
+    role: SyncOCMDataRole           		
+    events:                         		
       - schedule:
-          rate: rate(1 minute)
+          rate: rate(1 minute)      		
+      - http:                       		
+          path: sync                		
+          method: get               		
+          cors: true
 
-resources:
-  Resources:
-    # DynamoDB Table for chargers
-    ChargersTable:
-      Type: AWS::DynamoDB::Table
+resources:                          		
+  Resources:                        		
+    ChargersTable:                  		
+      Type: AWS::DynamoDB::Table    		
       Properties:
-        TableName: Chargers
-        BillingMode: PAY_PER_REQUEST
-        AttributeDefinitions:
-          - AttributeName: chargeId
-            AttributeType: S
-        KeySchema:
-          - AttributeName: chargeId
-            KeyType: HASH
-    # http:/punjaci-website.s3-website.localhost.localstack.cloud:4566
-    # S3 Bucket for static website hosting
-    WebsiteBucket:
-      Type: AWS::S3::Bucket
+        TableName: ${self:provider.environment.CHARGERS_TABLE}         	
+        BillingMode: PAY_PER_REQUEST  		
+        AttributeDefinitions:       		
+          - AttributeName: chargerId 		
+            AttributeType: S        		
+          - AttributeName: town     		
+            AttributeType: S        		
+        KeySchema:                  		
+          - AttributeName: chargerId 		
+            KeyType: HASH           		
+        GlobalSecondaryIndexes:     		
+          - IndexName: TownIndex    		
+            KeySchema:              		
+              - AttributeName: town 		
+                KeyType: HASH       		
+            Projection:             		
+              ProjectionType: ALL   		
+        # Opcija: TTL umesto Scan za automatsko brisanje zastarelih zapisa
+        # TimeToLiveSpecification:
+        #   AttributeName: ttl      		# Atribut koji sadrži Unix timestamp isteka
+        #   Enabled: true           		# DynamoDB automatski briše istekle zapise
+    WebsiteBucket:                  		
+      Type: AWS::S3::Bucket         		
       Properties:
-        BucketName: punjaci-website
-        AccessControl: PublicRead
-        WebsiteConfiguration:
-          IndexDocument: index.html
-          ErrorDocument: error.html
-    WebsiteBucketPolicy:
-      Type: AWS::S3::BucketPolicy
+        BucketName: punjaci-website 		
+        AccessControl: PublicRead   		
+        WebsiteConfiguration:       		
+          IndexDocument: index.html 		
+          ErrorDocument: error.html 		
+    WebsiteBucketPolicy:            		
+      Type: AWS::S3::BucketPolicy   		
       Properties:
-        Bucket: !Ref WebsiteBucket
-        PolicyDocument:
+        Bucket: !Ref WebsiteBucket  		
+        PolicyDocument:             		
+          Version: "2012-10-17"     		
+          Statement:
+            - Effect: Allow         		
+              Principal: "*"        		
+              Action: s3:GetObject  		
+              Resource: !Join ["", ["arn:aws:s3:::", !Ref WebsiteBucket, "/*"]]  	
+              
+    SyncOCMDataRole:
+      Type: AWS::IAM::Role              
+      Properties:
+        RoleName: syncOCMdata-role-${sls:stage}     
+        AssumeRolePolicyDocument:      
           Version: "2012-10-17"
           Statement:
             - Effect: Allow
-              Principal: "*"
-              Action: s3:GetObject
-              Resource: !Join ["", ["arn:aws:s3:::", !Ref WebsiteBucket, "/*"]]
+              Principal:
+                Service: lambda.amazonaws.com  
+              Action: sts:AssumeRole
+        Policies:                     
+          - PolicyName: DynamoDBAccess   
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow         
+                  Action:
+                    - dynamodb:PutItem
+                    - dynamodb:BatchWriteItem
+                    - dynamodb:Scan
+                    - dynamodb:Query
+                    - dynamodb:DeleteItem
+                  Resource:
+                    - !GetAtt ChargersTable.Arn                              
+                    - !Join ['/', [!GetAtt ChargersTable.Arn, 'index/*']] 
+          - PolicyName: CloudWatchLogs   
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource: "*"
