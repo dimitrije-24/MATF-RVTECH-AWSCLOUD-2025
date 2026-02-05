@@ -56,8 +56,8 @@ exports.handler = async (event) => {
     const ttl = Math.floor(Date.now() / 1000) + 2 * 24 * 60 * 60; 
     
     const normalizeTown = (town, postcode) => {
-      if (['Belgrad', 'Belgrade', 'Beograd'].includes(town)) return 'Belgrade';
-      if (postcode?.startsWith('11')) return 'Belgrade'; 
+      if (['Belgrad', 'Belgrade', 'Beograd'].includes(town)) return 'Beograd';
+      if (postcode?.startsWith('11')) return 'Beograd'; 
       return town || 'Unknown';
     };
     
