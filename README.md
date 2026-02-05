@@ -7,12 +7,11 @@ This project shows users the locations of EV chargers for a specific town. It wa
 Before running the project, ensure you have the following installed:
 * [Docker](https://www.docker.com/) (and Docker Compose)
 * [Node.js](https://nodejs.org/) & NPM
-* [AWS LocalStack CLI](https://github.com/localstack/aws-local) (`pip install aws-local-cli`)
-
+* [LocalStack CLI & awslocal](https://docs.localstack.cloud/getting-started/installation/)
 ## How to Run
 
 1. **Clone the repository:**
-   ```git clone git@github.com:dimitrije-24/MATF-RVTECH-AWSCLOUD-2025.git```
+   ```git clone https://github.com/dimitrije-24/MATF-RVTECH-AWSCLOUD-2025.git```
 
 2. **Start LocalStack and install dependencies:**
     ```sudo docker-compose up -d```
